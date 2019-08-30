@@ -1,0 +1,89 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: example-db-volumeclaim
+  namespace: example-db
+  labels:
+    app: example-db-volumeclaim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: example-db-config
+  namespace: example-db
+data:
+  initdb.sql: |
+    CREATE DATABASE example;
+    CREATE USER example WITH ENCRYPTED PASSWORD 'mypassword';
+    GRANT ALL PRIVILEGES ON DATABASE example TO example;
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: example-db
+  namespace: example-db
+spec:
+  ports:
+  - port: 5432
+  selector:
+    app: example-db
+  clusterIP: None
+  
+---
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: example-db
+  namespace: example-db
+  labels:
+    app: example-db
+spec:
+  replicas: 1
+  serviceName: example-db
+  selector:
+    matchLabels:
+      app: example-db
+  template:
+    metadata:
+      labels:
+        app: example-db
+    spec:
+      containers:
+        - image: postgres:alpine
+          name: example-db
+          resources:
+            requests:
+              memory: "25Mi"
+              cpu: "0.005"
+            limits:
+              memory: "100Mi"
+              cpu: "0.1"               
+          env:
+            - name: POSTGRES_USER
+              value: example
+            - name: POSTGRES_PASSWORD
+              value: mypassword
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+              name: example-db
+          volumeMounts:
+            - name: example-db-persistent-storage
+              mountPath: /var/lib/postgresql/data
+            - name: example-db-config
+              mountPath: /docker-entrypoint-initdb.d  
+      volumes:
+        - name: example-db-persistent-storage
+          persistentVolumeClaim:
+            claimName: example-db-volumeclaim
+        - name: example-db-config
+          configMap:
+            name: example-db-config            
